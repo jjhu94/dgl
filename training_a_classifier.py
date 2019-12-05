@@ -1,16 +1,16 @@
 import torch
 import torchvision  # the package has data loaders for common datasets
 import torchvision.transforms as transforms
+import matplotlib.pyplot as plt  # conda install -n env_name matploylib
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import time
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(device)
-
 start = time.time()
-
+### Loading and normalizing CIFAR10 ###
+# class Compose is used to manage transform, it do loops on input images for all transform actions
 transform = transforms.Compose([
     # transforms.Resize((32, 32)),  # used when the image is not 32*32
     transforms.ToTensor(),  # turn data to [0,1] and to Tensor
@@ -23,12 +23,30 @@ trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=4,
 # shuffle set to True for trainset and set to False for testset; reshuffle it in each epoch
 # num_workers: use subprocesses to read data; batch_size: 4 in 1 batch
 testset = torchvision.datasets.CIFAR10(root="./data", train=False,
-                                       download=False, transform=transform)  # only need to download once
+                                       download=True, transform=transform)
 testloader = torch.utils.data.DataLoader(testset, batch_size=4,
                                          shuffle=False, num_workers=2)
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')  # name classes
 
 
+# show some examples
+def imshow(img):  # turn Tensor type back to picture
+    img = img / 2 + 0.5  # unnormalize: turn back to [0,1]
+    npimg = img.numpy()  # Tensor back to NumPy (C, H, W)
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    # np.transpose is used to reverse the dimensions, imshow (H, W, C)
+    plt.show()
+
+
+"""
+dataiter = iter(trainloader)  # get an iterator using iter()
+images, labels = dataiter.next()  # iterate through it using next()
+imshow(torchvision.utils.make_grid(images))  # Make a grid of images: Tensor type
+print(' '.join('%s' % classes[labels[j]] for j in range(4)))  # print labels
+"""
+
+
+### Define a Convolutional Neural Network ###
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -50,7 +68,6 @@ class Net(nn.Module):
 
 
 net = Net()
-net.to(device)  # use net on GPU
 
 ### Define a Loss function and optimizer ####
 criterion = nn.CrossEntropyLoss()  # define loss function: classification cross-entropy loss
@@ -58,10 +75,10 @@ optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)  # optimizer: us
 # create an optimizer object, maintain current parameter status and update them based on calculated gradients
 
 ### Train the network ###
-for epoch in range(2):  # loop times
+for epoch in range(1):  # loop times
     running_loss = 0.0
     for i, data in enumerate(trainloader):
-        inputs, labels = data[0].to(device), data[1].to(device)  # send the inputs and targets to the GPU AT EVERY STEP
+        inputs, labels = data
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = criterion(outputs, labels)  # forward
@@ -78,11 +95,38 @@ print("finished")
 # save trained model
 PATH = './cifar_net.pth'
 torch.save(net.state_dict(), PATH)
+
+### Test the network on the test data ###
+# examples
+
+dataiter = iter(testloader)
+images, labels = dataiter.next()
+imshow(torchvision.utils.make_grid(images))
+print("Truth:", " ".join("%s" % classes[labels[j]] for j in range(4)))
+net = Net()
+net.load_state_dict(torch.load(PATH))  # reload saved model
+outputs = net(images)  # put data into model ,output size(4,10)
+_, predicted_label = torch.max(outputs, 1)  # find predicted label for each row; 0 means for each column
+print("Predicted:", " ".join("%s" % classes[predicted_label[j]] for j in range(4)))
+
+# on the whole test set
+correct = 0
+total = 0
+with torch.no_grad():  # do not need gradient
+    for data in testloader:
+        images, labels = data
+        outputs = net(images)
+        _, predicted_label = torch.max(outputs.data, 1)
+        total += labels.size(0)  # use 0 to get the value of batchsize
+        correct += (predicted_label == labels).sum().item()  # (predicted_label == labels) returns 1 when True
+        # use .sum() to sum up all hits, use item() to get the value of Tensor
+print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
+# on the whole test set and show accuracy for each class
 class_correct = list(0. for i in range(10))  # what the . mean?
 class_total = list(0. for i in range(10))
 with torch.no_grad():
     for data in testloader:
-        images, labels = data[0].to(device), data[1].to(device)
+        images, labels = data
         outputs = net(images)
         _, predicted_label = torch.max(outputs, 1)
         a = (predicted_label == labels)
@@ -94,5 +138,14 @@ with torch.no_grad():
 for i in range(10):
     print('Accuracy of %5s : %2d %%' % (classes[i], 100 * class_correct[i] / class_total[i]))
 
+
+### Training on GPU ###
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(device)
+net.to(device)  # use net on GPU
+inputs, labels = data[0].to(device), data[1].to(device)  # send the inputs and targets to the GPU AT EVERY STEP
+
 end = time.time()
 print("cost %.5f seconds" % (end-start))
+
+
