@@ -5,8 +5,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import time
+import argparse
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--device", type=str)
+    args = parser.parse_args()
+    print(args)
+    device = torch.device(args if torch.cuda.is_available() else "cpu")
+
 print(device)
 
 start = time.time()
